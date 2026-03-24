@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Windows 10 Firecracker Keyboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #1a1a1a;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            user-select: none;
+        }
+
+        /* Firecracker Canvas */
+        #canvas-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* Let clicks pass through to the keyboard */
+            z-index: 50;
+        }
+
+        /* Keyboard Layout Styles */
+        .keyboard-wrapper {
+            position: relative;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+            overflow-x: auto;
+        }
+
+        .keyboard {
+            display: flex;
+            flex-direction: row; /* Changed to row for a full-size layout */
+            gap: 20px;
+            background: #2d2d2d;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.1);
+            min-width: max-content; 
+        }
+
+        .keyboard-section {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .key-row {
+            display: flex;
+            gap: 8px;
+            justify-content: flex-start;
+        }
+
+        /* Base Key Style */
+        .key {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 50px;
+            min-width: 50px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            color: #ffffff;
+            cursor: pointer;
+            transition: transform 0.05s, box-shadow 0.05s;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+            padding: 0 10px;
+            /* Use unique CSS variables set by Javascript */
+            background: var(--key-bg, #444);
+            box-shadow: 0 4px 0 var(--key-shadow, #222), inset 0 1px 0 rgba(255,255,255,0.2);
+        }
+
+        /* Active/Pressed state */
+        .key:active, .key.active {
+            transform: translateY(4px);
+            box-shadow: 0 0px 0 var(--key-shadow, #222), inset 0 1px 0 rgba(255,255,255,0.2);
+            filter: brightness(1.2);
+        }
+
+        /* Special Key Widths */
+        .key-backspace { width: 110px; }
+        .key-tab { width: 80px; }
+        .key-caps { width: 100px; }
+        .key-enter { width: 120px; }
+        .key-shift-l { width: 130px; }
+        .key-shift-r { width: 140px; }
+        .key-ctrl, .key-alt, .key-win, .key-menu { width: 70px; }
+        .key-space { flex-grow: 1; max-width: 400px; }
+
+        /* New Full-Layout Specific Keys */
+        .key-hidden { visibility: hidden; pointer-events: none; }
+        .key-num-zero { width: 108px; }
+        .key-nav { min-width: 50px; }
+
+    </style>
+</head>
+<body>
+
+    <!-- Fireworks Canvas Layer -->
+    <canvas id="canvas-container"></canvas>
+
+    <!-- UI Keyboard Layer -->
+    <div class="keyboard-wrapper">
+        <h1 class="text-3xl font-bold text-white mb-6 drop-shadow-md tracking-wider">
+            <span class="text-green-500">W</span><span class="text-red-500">I</span><span class="text-orange-500">N</span><span class="text-[rgb(141,110,99)]">10</span> 
+            FIRECRACKER KEYBOARD
+        </h1>
+        <p class="text-gray-400 mb-4">Click the keys or type on your real keyboard!</p>
+        
+        <div class="keyboard" id="keyboard-container">
+            <div class="keyboard-section" id="main-section"></div>
+            <div class="keyboard-section" id="nav-section"></div>
+            <div class="keyboard-section" id="numpad-section"></div>
+        </div>
+    </div>
+
+    <script>
+        // --- 1. KEYBOARD SETUP ---
+        const mainLayout = [
+            [{k: 'Esc', c: 'Escape'}, {k: '', c: '', cls: 'key-hidden'}, {k: 'F1', c: 'F1'}, {k: 'F2', c: 'F2'}, {k: 'F3', c: 'F3'}, {k: 'F4', c: 'F4'}, {k: 'F5', c: 'F5'}, {k: 'F6', c: 'F6'}, {k: 'F7', c: 'F7'}, {k: 'F8', c: 'F8'}, {k: 'F9', c: 'F9'}, {k: 'F10', c: 'F10'}, {k: 'F11', c: 'F11'}, {k: 'F12', c: 'F12'}],
+            [{k: '`', c: '`'}, {k: '1', c: '1'}, {k: '2', c: '2'}, {k: '3', c: '3'}, {k: '4', c: '4'}, {k: '5', c: '5'}, {k: '6', c: '6'}, {k: '7', c: '7'}, {k: '8', c: '8'}, {k: '9', c: '9'}, {k: '0', c: '0'}, {k: '-', c: '-'}, {k: '=', c: '='}, {k: 'Backspace', c: 'Backspace', cls: 'key-backspace'}],
+            [{k: 'Tab', c: 'Tab', cls: 'key-tab'}, {k: 'Q', c: 'q'}, {k: 'W', c: 'w'}, {k: 'E', c: 'e'}, {k: 'R', c: 'r'}, {k: 'T', c: 't'}, {k: 'Y', c: 'y'}, {k: 'U', c: 'u'}, {k: 'I', c: 'i'}, {k: 'O', c: 'o'}, {k: 'P', c: 'p'}, {k: '[', c: '['}, {k: ']', c: ']'}, {k: '\\', c: '\\', cls: 'key-tab'}],
+            [{k: 'Caps Lock', c: 'CapsLock', cls: 'key-caps'}, {k: 'A', c: 'a'}, {k: 'S', c: 's'}, {k: 'D', c: 'd'}, {k: 'F', c: 'f'}, {k: 'G', c: 'g'}, {k: 'H', c: 'h'}, {k: 'J', c: 'j'}, {k: 'K', c: 'k'}, {k: 'L', c: 'l'}, {k: ';', c: ';'}, {k: "'", c: "'"}, {k: 'Enter', c: 'Enter', cls: 'key-enter'}],
+            [{k: 'Shift', c: 'ShiftLeft', cls: 'key-shift-l'}, {k: 'Z', c: 'z'}, {k: 'X', c: 'x'}, {k: 'C', c: 'c'}, {k: 'V', c: 'v'}, {k: 'B', c: 'b'}, {k: 'N', c: 'n'}, {k: 'M', c: 'm'}, {k: ',', c: ','}, {k: '.', c: '.'}, {k: '/', c: '/'}, {k: 'Shift', c: 'ShiftRight', cls: 'key-shift-r'}],
+            [{k: 'Ctrl', c: 'ControlLeft', cls: 'key-ctrl'}, {k: '❖ Win', c: 'MetaLeft', cls: 'key-win'}, {k: 'Alt', c: 'AltLeft', cls: 'key-alt'}, {k: 'Space', c: ' ', cls: 'key-space'}, {k: 'Alt', c: 'AltRight', cls: 'key-alt'}, {k: '❖ Win', c: 'MetaRight', cls: 'key-win'}, {k: '≡', c: 'ContextMenu', cls: 'key-menu'}, {k: 'Ctrl', c: 'ControlRight', cls: 'key-ctrl'}]
+        ];
+
+        const navLayout = [
+            [{k: 'PrtSc', c: 'PrintScreen', cls: 'key-nav'}, {k: 'ScrLk', c: 'ScrollLock', cls: 'key-nav'}, {k: 'Pause', c: 'Pause', cls: 'key-nav'}],
+            [{k: 'Ins', c: 'Insert', cls: 'key-nav'}, {k: 'Home', c: 'Home', cls: 'key-nav'}, {k: 'PgUp', c: 'PageUp', cls: 'key-nav'}],
+            [{k: 'Del', c: 'Delete', cls: 'key-nav'}, {k: 'End', c: 'End', cls: 'key-nav'}, {k: 'PgDn', c: 'PageDown', cls: 'key-nav'}],
+            [{k: '', c: '', cls: 'key-hidden'}], 
+            [{k: '', c: '', cls: 'key-hidden'}, {k: '↑', c: 'ArrowUp', cls: 'key-nav'}, {k: '', c: '', cls: 'key-hidden'}],
+            [{k: '←', c: 'ArrowLeft', cls: 'key-nav'}, {k: '↓', c: 'ArrowDown', cls: 'key-nav'}, {k: '→', c: 'ArrowRight', cls: 'key-nav'}]
+        ];
+
+        const numpadLayout = [
+            [{k: '', c: '', cls: 'key-hidden'}], 
+            [{k: 'Num', c: 'NumLock'}, {k: '/', c: 'NumpadDivide'}, {k: '*', c: 'NumpadMultiply'}, {k: '-', c: 'NumpadSubtract'}],
+            [{k: '7', c: 'Numpad7'}, {k: '8', c: 'Numpad8'}, {k: '9', c: 'Numpad9'}, {k: '+', c: 'NumpadAdd'}],
+            [{k: '4', c: 'Numpad4'}, {k: '5', c: 'Numpad5'}, {k: '6', c: 'Numpad6'}, {k: 'Ent', c: 'NumpadEnter'}],
+            [{k: '1', c: 'Numpad1'}, {k: '2', c: 'Numpad2'}, {k: '3', c: 'Numpad3'}, {k: '', c: '', cls: 'key-hidden'}],
+            [{k: '0', c: 'Numpad0', cls: 'key-num-zero'}, {k: '.', c: 'NumpadDecimal'}, {k: '', c: '', cls: 'key-hidden'}]
+        ];
+
+        const keyElements = {}; 
+
+        // Helper to hash key codes to guarantee totally unique features per key
+        function getHash(str) {
+            if (!str) return 0;
+            let hash = 0;
+            for (let i = 0; i < str.length; i++) {
+                hash = str.charCodeAt(i) + ((hash << 5) - hash);
+            }
+            return Math.abs(hash);
+        }
+
+        function generateUniqueColor(hash) {
+            // Generate a vibrant unique color per key out of the full spectrum
+            const hue = hash % 360;
+            const sat = 60 + (hash % 40); // 60% - 100% saturation
+            const light = 40 + (hash % 20); // 40% - 60% lightness
+            return {
+                bg: `hsl(${hue}, ${sat}%, ${light}%)`,
+                shadow: `hsl(${hue}, ${sat}%, ${light - 20}%)`,
+                canvas: `hsl(${hue}, ${sat}%, ${light + 15}%)`
+            };
+        }
+
+        function renderSection(layoutArray, containerId) {
+            const container = document.getElementById(containerId);
+            layoutArray.forEach(row => {
+                const rowDiv = document.createElement('div');
+                rowDiv.className = 'key-row';
+                
+                row.forEach(keyObj => {
+                    const btn = document.createElement('div');
+                    
+                    if (keyObj.cls === 'key-hidden') {
+                        btn.className = `key key-hidden`;
+                        rowDiv.appendChild(btn);
+                        return; // Skip hidden elements
+                    }
+
+                    // Assign completely unique color variables
+                    const hash = getHash(keyObj.c);
+                    const colors = generateUniqueColor(hash);
+                    
+                    btn.className = `key ${keyObj.cls || ''}`;
+                    btn.textContent = keyObj.k;
+                    
+                    // Apply unique colors via CSS variables
+                    btn.style.setProperty('--key-bg', colors.bg);
+                    btn.style.setProperty('--key-shadow', colors.shadow);
+                    btn.dataset.canvasColor = colors.canvas; // Store for fireworks
+                    
+                    btn.addEventListener('mousedown', (e) => triggerEffects(keyObj.c, btn, e));
+                    
+                    rowDiv.appendChild(btn);
+                    
+                    // Save reference for physical keyboard presses
+                    keyElements[keyObj.c.toLowerCase()] = { el: btn, code: keyObj.c };
+                    if (keyObj.c.match(/Left|Right|Numpad|Arrow|Page|Home|End|Insert|Delete/)) {
+                        keyElements[keyObj.c] = { el: btn, code: keyObj.c }; 
+                    }
+                });
+                container.appendChild(rowDiv);
+            });
+        }
+
+        renderSection(mainLayout, 'main-section');
+        renderSection(navLayout, 'nav-section');
+        renderSection(numpadLayout, 'numpad-section');
+
+        // --- 2. AUDIO SYNTHESIZER ---
+        let audioCtx;
+
+        function playSound(code) {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+
+            const hash = getHash(code);
+            const gainNode = audioCtx.createGain();
+            gainNode.connect(audioCtx.destination);
+            
+            // Vastly different sound types based on hash
+            const types = ['sine', 'square', 'sawtooth', 'triangle'];
+            
+            // Oscillator 1
+            const osc1 = audioCtx.createOscillator();
+            osc1.type = types[hash % 4];
+            
+            // Oscillator 2 for rich, unique tones
+            const osc2 = audioCtx.createOscillator();
+            osc2.type = types[(hash >> 2) % 4];
+            
+            // EVERY single key has a unique mathematical pitch and slide
+            const baseFreq = 80 + (hash % 1500); 
+            const slideTarget = Math.max(20, baseFreq * (0.1 + ((hash % 10)/10)));
+            
+            osc1.frequency.setValueAtTime(baseFreq, audioCtx.currentTime);
+            osc1.frequency.exponentialRampToValueAtTime(slideTarget, audioCtx.currentTime + 0.15);
+            
+            // Second oscillator is a mathematical interval above the first
+            const intervalMultipliers = [1, 1.25, 1.5, 2, 0.5];
+            const osc2Freq = baseFreq * intervalMultipliers[hash % 5];
+            osc2.frequency.setValueAtTime(osc2Freq, audioCtx.currentTime);
+            
+            osc1.connect(gainNode);
+            osc2.connect(gainNode);
+            
+            // Unique Envelope (volume pop and duration) per key
+            const duration = 0.1 + ((hash % 400) / 1000); // 0.1s to 0.5s duration
+            
+            gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+            gainNode.gain.linearRampToValueAtTime(0.1, audioCtx.currentTime + 0.02);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+            
+            osc1.start(audioCtx.currentTime);
+            osc2.start(audioCtx.currentTime);
+            osc1.stop(audioCtx.currentTime + duration);
+            osc2.stop(audioCtx.currentTime + duration);
+        }
+
+        // --- 3. FIRECRACKER VISUALS (CANVAS) ---
+        const canvas = document.getElementById('canvas-container');
+        const ctx = canvas.getContext('2d');
+        let width, height;
+        let particles = [];
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        class Particle {
+            constructor(x, y, color, shapeHash) {
+                this.x = x;
+                this.y = y;
+                // Explode outward in 360 degrees
+                const angle = Math.random() * Math.PI * 2;
+                
+                // Unique speeds per key
+                const maxSpeed = 4 + (shapeHash % 12);
+                const speed = Math.random() * maxSpeed + 2;
+                
+                this.vx = Math.cos(angle) * speed;
+                this.vy = Math.sin(angle) * speed;
+                this.color = color;
+                this.alpha = 1;
+                
+                // Unique lifespan and gravity per key
+                this.life = Math.random() * 20 + 20 + (shapeHash % 30);
+                this.decay = 0.01 + ((shapeHash % 20) / 1000);
+                this.gravity = 0.05 + ((shapeHash % 15) / 100);
+                
+                this.size = Math.random() * 4 + 2 + (shapeHash % 3);
+                this.shapeType = shapeHash % 5; // Expanded to 5 unique shapes
+            }
+
+            update() {
+                this.vy += this.gravity;
+                this.x += this.vx;
+                this.y += this.vy;
+                this.alpha -= this.decay;
+                this.life--;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                ctx.beginPath();
+                
+                if (this.shapeType === 0) {
+                    // Circle
+                    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                } else if (this.shapeType === 1) {
+                    // Square
+                    ctx.rect(this.x - this.size, this.y - this.size, this.size * 2, this.size * 2);
+                } else if (this.shapeType === 2) {
+                    // Triangle
+                    ctx.moveTo(this.x, this.y - this.size);
+                    ctx.lineTo(this.x - this.size, this.y + this.size);
+                    ctx.lineTo(this.x + this.size, this.y + this.size);
+                    ctx.closePath();
+                } else if (this.shapeType === 3) {
+                    // Star/Cross
+                    ctx.moveTo(this.x - this.size, this.y);
+                    ctx.lineTo(this.x + this.size, this.y);
+                    ctx.moveTo(this.x, this.y - this.size);
+                    ctx.lineTo(this.x, this.y + this.size);
+                    ctx.lineWidth = 2;
+                    ctx.strokeStyle = this.color;
+                    ctx.stroke();
+                    ctx.beginPath(); // clear path so fill doesn't mess it up
+                } else {
+                    // Horizontal lines / Confetti
+                    ctx.rect(this.x - this.size * 1.5, this.y - this.size / 3, this.size * 3, this.size / 1.5);
+                }
+
+                if (this.shapeType !== 3) {
+                    ctx.fillStyle = this.color;
+                    ctx.fill();
+                }
+                
+                // Add a glowing effect
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = this.color;
+                ctx.restore();
+            }
+        }
+
+        function createFirework(x, y, hexColor, codeStr) {
+            // Unique particle count per key
+            const shapeHash = getHash(codeStr);
+            const particleCount = 30 + (shapeHash % 50) + Math.random() * 20;
+            
+            for (let i = 0; i < particleCount; i++) {
+                particles.push(new Particle(x, y, hexColor, shapeHash));
+            }
+        }
+
+        function animate() {
+            // Semi-transparent black to create a trailing/motion blur effect
+            ctx.fillStyle = 'rgba(26, 26, 26, 0.2)';
+            ctx.fillRect(0, 0, width, height);
+
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.update();
+                p.draw();
+
+                if (p.alpha <= 0 || p.life <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+            requestAnimationFrame(animate);
+        }
+        animate();
+
+        // --- 4. EVENT HANDLERS ---
+        function triggerEffects(code, el, event) {
+            // 1. Play Sound
+            playSound(code);
+
+            // 2. Firecracker
+            // Read the unique color saved on the element
+            const fireworkColor = el.dataset.canvasColor || '#FFFFFF';
+            
+            // Determine X/Y for firework. If clicked, use mouse pos. If typed, use button pos.
+            let x = width / 2;
+            let y = height / 2;
+            
+            if (event && event.clientX) {
+                x = event.clientX;
+                y = event.clientY;
+            } else {
+                const rect = el.getBoundingClientRect();
+                x = rect.left + rect.width / 2;
+                y = rect.top + rect.height / 2;
+            }
+
+            createFirework(x, y, fireworkColor, code);
+        }
+
+        // Listen for physical keyboard typing
+        window.addEventListener('keydown', (e) => {
+            // Prevent default scrolling for Space, Arrow keys, etc.
+            if(["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].indexOf(e.code) > -1) {
+                e.preventDefault();
+            }
+
+            const keyStr = e.key.toLowerCase();
+            const codeStr = e.code;
+            
+            // Try matching by event.code first (for modifiers), then by event.key
+            let matched = keyElements[codeStr] || keyElements[keyStr];
+            
+            // Edge case for spacebar
+            if (e.code === 'Space') matched = keyElements[' '];
+
+            if (matched) {
+                matched.el.classList.add('active');
+                triggerEffects(matched.code, matched.el, null);
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            const keyStr = e.key.toLowerCase();
+            const codeStr = e.code;
+            let matched = keyElements[codeStr] || keyElements[keyStr];
+            if (e.code === 'Space') matched = keyElements[' '];
+
+            if (matched) {
+                matched.el.classList.remove('active');
+            }
+        });
+
+    </script>
+</body>
+</html>
